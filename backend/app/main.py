@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
 from app.ollama_service import (
+    OCR_MODEL_NAME,
     SUMMARY_MODEL_NAME,
     extract_keywords_and_summary,
     extract_text_with_ocr,
@@ -39,11 +40,13 @@ def health() -> dict[str, str]:
 
 def extract_text_from_pdf(
     file_bytes: bytes,
-) -> tuple[str, int]:
-    """텍스트 기반 PDF에서 내장 텍스트를 빠르게 추출합니다."""
+) -> tuple[str, int, int, int]:
+    """PDF의 내장 텍스트와 개발자용 진단 정보를 함께 추출합니다."""
 
     reader = PdfReader(BytesIO(file_bytes))
     text_parts: list[str] = []
+    table_count = 0
+    image_count = 0
 
     for page in reader.pages:
         page_text = page.extract_text()
@@ -51,7 +54,19 @@ def extract_text_from_pdf(
         if page_text:
             text_parts.append(page_text)
 
-    return "\n".join(text_parts), len(reader.pages)
+        # pypdf의 선 기반 표 탐지는 표가 없거나 비정형 PDF에서도 예외를 낼 수 있어,
+        # 진단 정보 수집 실패가 문서 분석 전체를 중단시키지 않도록 분리합니다.
+        try:
+            table_count += len(page.extract_tables())
+        except Exception:
+            pass
+
+        try:
+            image_count += len(page.images)
+        except Exception:
+            pass
+
+    return "\n".join(text_parts), len(reader.pages), table_count, image_count
 
 
 def should_use_ocr(
@@ -92,7 +107,7 @@ async def pdf_summary(
 
     try:
         # 1차: 텍스트 기반 PDF에서 빠르고 정확하게 원본 텍스트를 추출합니다.
-        extracted_text, page_count = extract_text_from_pdf(
+        extracted_text, page_count, table_count, image_count = extract_text_from_pdf(
             file_bytes,
         )
     except Exception as error:
@@ -103,6 +118,7 @@ async def pdf_summary(
 
     if should_use_ocr(extracted_text, page_count):
         extraction_method = "glm-ocr"
+        extraction_model = OCR_MODEL_NAME or "glm-ocr"
 
         try:
             # 2차: 텍스트가 거의 없는 스캔 PDF만 OCR 모델에 보냅니다.
@@ -119,6 +135,7 @@ async def pdf_summary(
             ) from error
     else:
         extraction_method = "pypdf"
+        extraction_model = "pypdf"
         text = extracted_text
 
     if not text.strip():
@@ -144,7 +161,12 @@ async def pdf_summary(
     return PDFSummaryResponse(
         filename=file.filename or "uploaded.pdf",
         model=SUMMARY_MODEL_NAME,
+        extraction_model=extraction_model,
         extraction_method=extraction_method,
+        extracted_text=text,
+        page_count=page_count,
+        table_count=table_count,
+        image_count=image_count,
         keyword=result["keyword"],
         summary=result["summary"],
     )
