@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
 import { validateFile } from "../utils/validateFile";
 
@@ -38,6 +38,16 @@ export default function HomePage() {
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
   const controllerRef = useRef(null);
+  const resultSectionRef = useRef(null);
+
+  useEffect(() => {
+    if (status === "success" && result) {
+      resultSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, [result, status]);
 
   function selectFile(nextFile) {
     setFile(nextFile);
@@ -103,7 +113,7 @@ export default function HomePage() {
           <span>PDF · 최대 5MB</span>
         </div>
         <div
-          className={`dropzone ${isDragging ? "is-dragging" : ""}`}
+          className={`dropzone ${isDragging ? "is-dragging" : ""} ${status === "loading" ? "is-analyzing" : ""}`}
           onDragEnter={(event) => {
             event.preventDefault();
             setIsDragging(true);
@@ -113,25 +123,37 @@ export default function HomePage() {
           onDrop={(event) => {
             event.preventDefault();
             setIsDragging(false);
-            selectFile(event.dataTransfer.files?.[0] ?? null);
+            if (status !== "loading") {
+              selectFile(event.dataTransfer.files?.[0] ?? null);
+            }
           }}
         >
           <input
             ref={inputRef}
             type="file"
             accept="application/pdf"
+            disabled={status === "loading"}
             onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
           />
-          <span className="upload-symbol" aria-hidden="true">
-            ↑
-          </span>
-          <p>
-            <button type="button" onClick={() => inputRef.current?.click()}>
-              파일을 선택
-            </button>
-            하거나 여기로 끌어다 놓으세요
-          </p>
-          <small>PDF 형식만 지원합니다</small>
+          {status === "loading" ? (
+            <div className="analysis-working" role="status">
+              <span>문서를 분석하고 있어요</span>
+              <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+            </div>
+          ) : (
+            <>
+              <span className="upload-symbol" aria-hidden="true">
+                ↑
+              </span>
+              <p>
+                <button type="button" onClick={() => inputRef.current?.click()}>
+                  파일을 선택
+                </button>
+                하거나 여기로 끌어다 놓으세요
+              </p>
+              <small>PDF 형식만 지원합니다</small>
+            </>
+          )}
         </div>
         {file && (
           <div className="file-row">
@@ -178,42 +200,63 @@ export default function HomePage() {
           )}
         </div>
       </section>
-      {result && (
-        <section className="results" aria-labelledby="result-title">
+      <section
+        ref={resultSectionRef}
+        className={`results ${result ? "has-result" : "is-pending"}`}
+        aria-labelledby="result-title"
+      >
           <div className="section-title">
             <div>
               <p>02 · RESULT</p>
               <h2 id="result-title">분석 결과</h2>
             </div>
-            <span className="complete">
-              <i /> 분석 완료
+            <span className={`complete ${result ? "" : "is-pending"}`}>
+              <i /> {result ? "분석 완료" : status === "loading" ? "분석 중" : "분석 대기"}
             </span>
           </div>
-          <div className="result-cards">
-            <article>
-              <p>KEYWORDS</p>
-              <div className="keywords">
-                {(result.keyword || "키워드 없음").split(",").map((keyword) => (
-                  <span key={keyword.trim()}>{keyword.trim()}</span>
-                ))}
-              </div>
-            </article>
-            <article className="summary">
-              <p>SUMMARY</p>
-              <p>{result.summary}</p>
-            </article>
-          </div>
-          <div className="download">
+          {result ? (
+            <div className="result-cards" key={result.filename}>
+              <article className="result-reveal result-keywords">
+                <p>KEYWORDS</p>
+                <div className="keywords">
+                  {(result.keyword || "키워드 없음").split(",").map((keyword) => (
+                    <span key={keyword.trim()}>{keyword.trim()}</span>
+                  ))}
+                </div>
+              </article>
+              <article className="summary result-reveal result-summary">
+                <p>SUMMARY</p>
+                <p>{result.summary}</p>
+              </article>
+            </div>
+          ) : status === "loading" ? (
+            <div className="result-cards skeleton-cards" aria-hidden="true">
+              <article><p>KEYWORDS</p><div className="skeleton-lines short" /></article>
+              <article className="summary"><p>SUMMARY</p><div className="skeleton-lines" /><div className="skeleton-lines medium" /></article>
+            </div>
+          ) : (
+            <div className="result-cards empty-result-cards">
+              <article className="empty-result-card">
+                <p>KEYWORDS</p>
+                <span>분석 후 핵심 키워드가 표시됩니다.</span>
+                <div className="ghost-keywords" aria-hidden="true"><i /><i /><i /></div>
+              </article>
+              <article className="summary empty-result-card">
+                <p>SUMMARY</p>
+                <span>문서의 핵심 내용이 3문장 이내로 정리됩니다.</span>
+              </article>
+            </div>
+          )}
+          <div className={`download ${result ? "result-reveal result-download" : "is-pending"}`}>
             <div>
               <p>DOWNLOAD</p>
-              <span>분석 내용을 파일로 보관하세요.</span>
+              <span>{result ? "분석 내용을 파일로 보관하세요." : status === "loading" ? "분석 결과를 생성하고 있습니다." : "분석을 시작하면 결과를 파일로 보관할 수 있습니다."}</span>
             </div>
-            <button type="button" onClick={() => downloadText(result)}>
+            <button type="button" disabled={!result} onClick={() => downloadText(result)}>
               ↓&nbsp; TXT 다운로드
             </button>
           </div>
-        </section>
-      )}
+      </section>
       <footer>
         <span>✦</span> 업로드한 문서는 분석에만 사용되며, 처리 후 저장되지
         않습니다.
