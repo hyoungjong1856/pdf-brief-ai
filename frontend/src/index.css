@@ -486,6 +486,10 @@ footer span {
 .file-pick-button span {
   margin-left: 20px;
 }
+.test-actions {
+  display: flex;
+  gap: 10px;
+}
 .run-button {
   width: 132px;
   padding: 13px 14px;
@@ -504,6 +508,9 @@ footer span {
 }
 .run-button:disabled {
   opacity: 0.45;
+}
+.cancel-run-button {
+  justify-content: center;
 }
 .developer-error {
   margin: 12px 0 0;
@@ -727,6 +734,12 @@ footer span {
   }
   .run-button {
     width: 100%;
+  }
+  .test-actions {
+    width: 100%;
+  }
+  .test-actions .run-button {
+    flex: 1;
   }
   .diagnostic-grid {
     grid-template-columns: 1fr;

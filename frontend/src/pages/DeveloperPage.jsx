@@ -13,13 +13,24 @@ const formatBytes = (size) =>
   size ? `${(size / 1024 / 1024).toFixed(2)} MB` : "—";
 const formatDuration = (milliseconds) =>
   milliseconds === undefined ? "—" : `${(milliseconds / 1000).toFixed(2)}초`;
+const formatPageCount = (pageCount) =>
+  Number.isInteger(pageCount) ? `${pageCount} 페이지` : "—";
+
+const formatExtractionMethod = (method) => {
+  if (!method) return "-";
+  if (method === "pypdf") return "기본 텍스트 추출";
+  return "OCR";
+};
 
 export default function DeveloperPage() {
   const [file, setFile] = useState(null);
+  const [fileMetadata, setFileMetadata] = useState(null);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const inputRef = useRef(null);
+  const controllerRef = useRef(null);
+
   async function runTest() {
     const validationError = validateFile(file);
     if (validationError) {
@@ -27,15 +38,27 @@ export default function DeveloperPage() {
       setStatus("error");
       return;
     }
+    const controller = new AbortController();
+    controllerRef.current = controller;
     setStatus("loading");
     setError("");
     try {
-      const data = await uploadDocument(file);
+      const data = await uploadDocument(file, { signal: controller.signal });
       setResult(data);
+      setFileMetadata({ name: file.name, size: file.size });
+      setFile(null);
+      inputRef.current.value = "";
       setStatus("success");
     } catch (requestError) {
-      setError(requestError.message);
-      setStatus("error");
+      if (requestError.name === "AbortError") {
+        setError("분석 요청을 취소했습니다.");
+        setStatus("cancelled");
+      } else {
+        setError(requestError.message);
+        setStatus("error");
+      }
+    } finally {
+      controllerRef.current = null;
     }
   }
   return (
@@ -69,9 +92,11 @@ export default function DeveloperPage() {
           <span>
             {status === "loading"
               ? "분석 중"
-              : result
-                ? "결과 수신"
-                : "대기 중"}
+              : status === "cancelled"
+                ? "취소됨"
+                : result
+                  ? "결과 수신"
+                  : "대기 중"}
           </span>
         </div>
         <div className="test-controls">
@@ -81,6 +106,7 @@ export default function DeveloperPage() {
             accept="application/pdf"
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
+              setFileMetadata(null);
               setResult(null);
               setError("");
             }}
@@ -93,15 +119,25 @@ export default function DeveloperPage() {
             {file ? file.name : "테스트 PDF 선택"}
             <span>⌄</span>
           </button>
-          <button
-            className="run-button"
-            type="button"
-            disabled={!file || status === "loading"}
-            onClick={runTest}
-          >
-            {status === "loading" ? "실행 중…" : "분석 실행"}
-            <span>→</span>
-          </button>
+          <div className="test-actions">
+            <button
+              className="run-button"
+              type="button"
+              disabled={!file || status === "loading"}
+              onClick={runTest}
+            >
+              {status === "loading" ? "실행 중…" : "분석 실행"}
+              <span>→</span>
+            </button>
+            <button
+              className="run-button cancel-run-button"
+              type="button"
+              disabled={status !== "loading"}
+              onClick={() => controllerRef.current?.abort()}
+            >
+              분석 취소
+            </button>
+          </div>
         </div>
         {error && (
           <p className="developer-error" role="alert">
@@ -128,7 +164,7 @@ export default function DeveloperPage() {
             </div>
             <div>
               <dt>추출 방식</dt>
-              <dd>{result?.extraction_method ?? "—"}</dd>
+              <dd>{formatExtractionMethod(result?.extraction_method)}</dd>
             </div>
             <div>
               <dt>추출 시간</dt>
@@ -144,15 +180,15 @@ export default function DeveloperPage() {
           <dl>
             <div>
               <dt>파일명</dt>
-              <dd>{file?.name ?? "—"}</dd>
+              <dd>{fileMetadata?.name ?? "—"}</dd>
             </div>
             <div>
               <dt>파일 크기</dt>
-              <dd>{formatBytes(file?.size)}</dd>
+              <dd>{formatBytes(fileMetadata?.size)}</dd>
             </div>
             <div>
               <dt>페이지 수</dt>
-              <dd>{result?.page_count ?? "미수집"}</dd>
+              <dd>{formatPageCount(result?.page_count)}</dd>
             </div>
             <div>
               <dt>표 개수</dt>

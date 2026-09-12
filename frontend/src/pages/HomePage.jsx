@@ -8,11 +8,11 @@ function formatFileSize(size) {
     : `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function downloadText(file, result) {
+function downloadText(result) {
   const content = [
     "PDF Brief AI 분석 결과",
     "",
-    `원본 파일: ${file.name}`,
+    `원본 파일: ${result.filename}`,
     "",
     "키워드",
     result.keyword || "-",
@@ -25,7 +25,7 @@ function downloadText(file, result) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${file.name.replace(/\.pdf$/i, "")}-summary.txt`;
+  link.download = `${result.filename.replace(/\.pdf$/i, "")}-summary.txt`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -60,6 +60,8 @@ export default function HomePage() {
     try {
       const data = await uploadDocument(file, { signal: controller.signal });
       setResult(data);
+      setFile(null);
+      inputRef.current.value = "";
       setStatus("success");
     } catch (error) {
       setStatus(error.name === "AbortError" ? "cancelled" : "error");
@@ -206,7 +208,7 @@ export default function HomePage() {
               <p>DOWNLOAD</p>
               <span>분석 내용을 파일로 보관하세요.</span>
             </div>
-            <button type="button" onClick={() => downloadText(file, result)}>
+            <button type="button" onClick={() => downloadText(result)}>
               ↓&nbsp; TXT 다운로드
             </button>
           </div>

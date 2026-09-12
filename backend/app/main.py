@@ -20,7 +20,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# React 개발 서버가 FastAPI에 요청할 수 있도록 허용합니다.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -120,8 +119,8 @@ async def pdf_summary(
         ) from error
 
     if True:  # 항상 OCR을 사용하도록 설정 (개발용)
-        extraction_method = "glm-ocr"
-        extraction_model = OCR_MODEL_NAME or "glm-ocr"
+        extraction_method = OCR_MODEL_NAME
+        extraction_model = OCR_MODEL_NAME
 
         try:
             # 2차: 텍스트가 거의 없는 스캔 PDF만 OCR 모델에 보냅니다.
