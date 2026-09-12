@@ -1,35 +1,15 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-
-class ChatRequest(BaseModel):
-    message: str = Field(
-        min_length=1,
-        max_length=2000,
-    )
-
-
-class ChatResponse(BaseModel):
-    model: str
-    answer: str
-
-
-class SummaryRequest(BaseModel):
-    text: str = Field(
-        min_length=1,
-        max_length=5000,
-    )
-
-
-class SummaryResponse(BaseModel):
-    summary: str
-
-
-#############################
-# PDF 작업을 위한 추가 사항
-#############################
 
 class PDFSummaryResponse(BaseModel):
     filename: str
     model: str
+    extraction_model: str
+    extraction_method: str
+    extraction_time_ms: float
+    extracted_text: str
+    page_count: int
+    table_count: int
+    image_count: int
     keyword: str
     summary: str
