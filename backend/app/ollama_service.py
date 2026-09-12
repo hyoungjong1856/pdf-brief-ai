@@ -3,8 +3,8 @@ import json
 import os
 from pathlib import Path
 
-import fitz
 import httpx
+import pymupdf
 from dotenv import load_dotenv
 
 # uvicorn을 어느 디렉터리에서 실행하더라도 backend/.env를 읽습니다.
@@ -104,7 +104,7 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
     """스캔 PDF를 페이지 이미지로 변환한 뒤 GLM-OCR로 텍스트를 읽습니다."""
 
     # PyMuPDF가 메모리의 PDF 바이트를 열고 페이지별 접근을 제공합니다.
-    document = fitz.open(
+    document = pymupdf.open(
         stream=file_bytes,
         filetype="pdf",
     )
@@ -127,13 +127,11 @@ def extract_text_with_ocr(file_bytes: bytes) -> str:
                 "model": OCR_MODEL_NAME,
                 "prompt": (
                     "이미지에 있는 모든 텍스트를 원문의 읽기 순서대로 추출하고 Markdown 형식으로 출력하세요.\n"
-                    "HTML 태그, 좌표, data-bbox, data-label 등의 메타데이터는 출력하지 마세요.\n"
                     "제목은 Markdown 제목(#, ##, ###), 목록은 글머리 기호나 번호 목록, 표는 Markdown 표로 표현하세요.\n"
                     "문단 구분과 줄바꿈을 유지하고, 다단 문서는 자연스러운 읽기 순서로 정리하세요.\n"
                     "원문의 언어, 숫자, 기호를 유지하고 번역, 요약, 설명이나 내용을 추가하지 마세요.\n"
                     "읽을 수 없는 부분은 추측하지 말고 [판독 불가]로 표시하세요.\n"
                     "이미지나 로고에 포함된 글자는 추출하되 이미지 설명이나 이미지 태그는 넣지 마세요.\n"
-                    "코드 블록으로 감싸지 말고 추출한 Markdown 본문만 출력하세요."
                 ),
                 "images": [image_base64],
                 "stream": False,
