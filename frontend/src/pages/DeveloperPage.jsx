@@ -11,6 +11,8 @@ const criteria = [
 ];
 const formatBytes = (size) =>
   size ? `${(size / 1024 / 1024).toFixed(2)} MB` : "—";
+const formatDuration = (milliseconds) =>
+  milliseconds === undefined ? "—" : `${(milliseconds / 1000).toFixed(2)}초`;
 
 export default function DeveloperPage() {
   const [file, setFile] = useState(null);
@@ -127,6 +129,10 @@ export default function DeveloperPage() {
             <div>
               <dt>추출 방식</dt>
               <dd>{result?.extraction_method ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>추출 시간</dt>
+              <dd>{formatDuration(result?.extraction_time_ms)}</dd>
             </div>
           </dl>
         </article>

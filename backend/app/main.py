@@ -1,4 +1,5 @@
 import asyncio
+import time
 from io import BytesIO
 
 import httpx
@@ -105,6 +106,8 @@ async def pdf_summary(
             detail="비어 있는 PDF 파일입니다.",
         )
 
+    extraction_started_at = time.perf_counter()
+
     try:
         # 1차: 텍스트 기반 PDF에서 빠르고 정확하게 원본 텍스트를 추출합니다.
         extracted_text, page_count, table_count, image_count = extract_text_from_pdf(
@@ -116,7 +119,7 @@ async def pdf_summary(
             detail="PDF 파일을 읽는 데 실패했습니다.",
         ) from error
 
-    if should_use_ocr(extracted_text, page_count):
+    if True:  # 항상 OCR을 사용하도록 설정 (개발용)
         extraction_method = "glm-ocr"
         extraction_model = OCR_MODEL_NAME or "glm-ocr"
 
@@ -137,6 +140,11 @@ async def pdf_summary(
         extraction_method = "pypdf"
         extraction_model = "pypdf"
         text = extracted_text
+
+    extraction_time_ms = round(
+        (time.perf_counter() - extraction_started_at) * 1000,
+        2,
+    )
 
     if not text.strip():
         raise HTTPException(
@@ -163,6 +171,7 @@ async def pdf_summary(
         model=SUMMARY_MODEL_NAME,
         extraction_model=extraction_model,
         extraction_method=extraction_method,
+        extraction_time_ms=extraction_time_ms,
         extracted_text=text,
         page_count=page_count,
         table_count=table_count,

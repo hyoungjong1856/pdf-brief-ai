@@ -6,6 +6,7 @@ class PDFSummaryResponse(BaseModel):
     model: str
     extraction_model: str
     extraction_method: str
+    extraction_time_ms: float
     extracted_text: str
     page_count: int
     table_count: int
