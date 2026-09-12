@@ -1,9 +1,16 @@
 import base64
 import json
 import os
+from pathlib import Path
 
 import fitz
 import httpx
+from dotenv import load_dotenv
+
+# uvicorn을 어느 디렉터리에서 실행하더라도 backend/.env를 읽습니다.
+# 이미 셸에서 설정한 환경 변수는 override=False로 유지합니다.
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 OLLAMA_BASE_URL = (os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_CHAT_URL = os.getenv("OLLAMA_CHAT_URL") or f"{OLLAMA_BASE_URL}/api/chat"
