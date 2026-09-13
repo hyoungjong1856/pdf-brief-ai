@@ -17,10 +17,32 @@ const formatPageCount = (pageCount) =>
   Number.isInteger(pageCount) ? `${pageCount} 페이지` : "—";
 
 const formatExtractionMethod = (method) => {
-  if (!method) return "-";
+  if (!method) return "—";
   if (method === "pypdf") return "기본 텍스트 추출";
   return "OCR";
 };
+
+function downloadExtractedText(result) {
+  const content = [
+    "PDF Brief AI 추출 텍스트",
+    "",
+    `원본 파일: ${result.filename}`,
+    `추출 방식: ${formatExtractionMethod(result.extraction_method)}`,
+    `추출 모델: ${result.extraction_model}`,
+    `페이지 수: ${result.page_count}`,
+    "",
+    "추출 원문",
+    result.extracted_text,
+  ].join("\n");
+  const url = URL.createObjectURL(
+    new Blob([content], { type: "text/plain;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${result.filename.replace(/\.pdf$/i, "")}-extracted.txt`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function DeveloperPage() {
   const [file, setFile] = useState(null);
@@ -217,6 +239,23 @@ export default function DeveloperPage() {
             {result?.extracted_text ??
               "테스트 문서를 선택하고 분석을 실행하면 추출 결과가 표시됩니다."}
           </pre>
+        </div>
+        <div className="download extraction-download">
+          <div>
+            <p>DOWNLOAD</p>
+            <span>
+              {result
+                ? "추출 원문과 문서 정보를 TXT 파일로 저장합니다."
+                : "분석 완료 후 추출 텍스트를 다운로드할 수 있습니다."}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={!result}
+            onClick={() => downloadExtractedText(result)}
+          >
+            ↓&nbsp; TXT 다운로드
+          </button>
         </div>
       </section>
       <section className="evaluation">
