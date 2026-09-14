@@ -8,14 +8,15 @@ const formatDuration = (milliseconds) =>
   milliseconds === undefined ? "—" : `${(milliseconds / 1000).toFixed(2)}초`;
 const formatPageCount = (pageCount) =>
   Number.isInteger(pageCount) ? `${pageCount} 페이지` : "—";
-const formatCer = (cer) =>
-  typeof cer === "number" ? `${(cer * 100).toFixed(2)}%` : "미측정";
+const formatAccuracy = (cer) =>
+  Number.isFinite(cer)
+    ? `${(Math.min(1, Math.max(0, 1 - cer)) * 100).toFixed(2)}%`
+    : "미측정";
 const formatCharacterCount = (count) =>
   Number.isInteger(count) ? `${count.toLocaleString()}자` : "미측정";
 
 const formatExtractionMethod = (method) => {
   if (!method) return "—";
-  if (method === "pypdf") return "기본 텍스트 추출";
   return "OCR";
 };
 
@@ -171,7 +172,7 @@ export default function DeveloperPage() {
             <strong>
               {groundTruthFile
                 ? groundTruthFile.name
-                : "CER 계산용 정답 텍스트(.txt)를 추가하세요"}
+                : "정확도 계산용 정답 텍스트(.txt)를 추가하세요"}
             </strong>
           </div>
           <button
@@ -228,14 +229,6 @@ export default function DeveloperPage() {
               <dt>페이지 수</dt>
               <dd>{formatPageCount(result?.page_count)}</dd>
             </div>
-            <div>
-              <dt>표 개수</dt>
-              <dd>{result?.table_count ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>이미지 수</dt>
-              <dd>{result?.image_count ?? "—"}</dd>
-            </div>
           </dl>
         </article>
       </section>
@@ -252,11 +245,15 @@ export default function DeveloperPage() {
             <p>KEYWORDS</p>
             <div className="keywords">
               {result ? (
-                (result.keyword || "키워드 없음").split(",").map((keyword) => (
-                  <span key={keyword.trim()}>{keyword.trim()}</span>
-                ))
+                (result.keyword || "키워드 없음")
+                  .split(",")
+                  .map((keyword) => (
+                    <span key={keyword.trim()}>{keyword.trim()}</span>
+                  ))
               ) : (
-                <span className="developer-result-empty">분석 후 키워드가 표시됩니다.</span>
+                <span className="developer-result-empty">
+                  분석 후 키워드가 표시됩니다.
+                </span>
               )}
             </div>
           </article>
@@ -313,7 +310,7 @@ export default function DeveloperPage() {
           </div>
           <span>
             {result?.cer !== undefined && result?.cer !== null
-              ? "CER 계산 완료"
+              ? "정확도 계산 완료"
               : groundTruthFile
                 ? "정답 텍스트 연결됨"
                 : "정답 데이터 필요"}
@@ -328,8 +325,8 @@ export default function DeveloperPage() {
           </div>
           <div className="evaluation-row">
             <strong>추출 정확도</strong>
-            <span>정규화한 정답·추출 텍스트의 문자 오류율</span>
-            <span>CER(낮을수록 좋음)</span>
+            <span>정규화한 정답·추출 텍스트의 문자 정확도</span>
+            <span>CER 기반 정확도(높을수록 좋음)</span>
             <b
               className={
                 result?.cer === undefined || result?.cer === null
@@ -337,14 +334,16 @@ export default function DeveloperPage() {
                   : ""
               }
             >
-              {formatCer(result?.cer)}
+              {formatAccuracy(result?.cer)}
             </b>
           </div>
         </div>
-        <div className="evaluation-metrics" aria-label="CER 보조 정보">
+        <div className="evaluation-metrics" aria-label="정확도 보조 정보">
           <div>
             <span>추출 텍스트 글자 수</span>
-            <strong>{formatCharacterCount(result?.extracted_text_length)}</strong>
+            <strong>
+              {formatCharacterCount(result?.extracted_text_length)}
+            </strong>
           </div>
           <div>
             <span>전처리 후 추출 텍스트</span>
@@ -355,13 +354,16 @@ export default function DeveloperPage() {
           <div>
             <span>전처리 후 정답 텍스트</span>
             <strong>
-              {formatCharacterCount(result?.normalized_ground_truth_text_length)}
+              {formatCharacterCount(
+                result?.normalized_ground_truth_text_length,
+              )}
             </strong>
           </div>
         </div>
         <p className="evaluation-note">
-          CER은 정답과 추출문 모두 |, -, *, # 및 모든 공백을
-          제거해 계산합니다. 음수 부호도 제외되며 TXT에는 추출 원문이 저장됩니다.
+          정확도는 (1 − CER) × 100으로 환산하며, CER이 1을 넘으면 0%로
+          표시합니다. CER은 정답과 추출문 모두 |, -, *, # 및 모든 공백을 제거해
+          계산합니다. 음수 부호도 제외되며 TXT에는 추출 원문이 저장됩니다.
         </p>
       </section>
     </main>
