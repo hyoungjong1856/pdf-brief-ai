@@ -2,33 +2,44 @@ import { useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
 import { validateFile } from "../utils/validateFile";
 
-const criteria = [
-  ["추출 정확도", "한글·영문·숫자·기호 인식", "30%", "CER / WER"],
-  ["문서 구조 이해", "제목·문단·표·읽기 순서", "20%", "구조 보존 점수"],
-  ["업무 필드 정확도", "날짜·금액·문서번호·상호", "20%", "완전 일치율 / F1"],
-  ["저품질 대응", "흐림·기울어짐·도장·서명", "10%", "저품질 세트 정확도"],
-  ["속도·안정성", "처리 시간·실패·재시도", "10%", "평균 처리 시간"],
-];
 const formatBytes = (size) =>
   size ? `${(size / 1024 / 1024).toFixed(2)} MB` : "—";
 const formatDuration = (milliseconds) =>
   milliseconds === undefined ? "—" : `${(milliseconds / 1000).toFixed(2)}초`;
 const formatPageCount = (pageCount) =>
   Number.isInteger(pageCount) ? `${pageCount} 페이지` : "—";
+const formatAccuracy = (cer) =>
+  Number.isFinite(cer)
+    ? `${(Math.min(1, Math.max(0, 1 - cer)) * 100).toFixed(2)}%`
+    : "미측정";
+const formatCharacterCount = (count) =>
+  Number.isInteger(count) ? `${count.toLocaleString()}자` : "미측정";
 
 const formatExtractionMethod = (method) => {
-  if (!method) return "-";
-  if (method === "pypdf") return "기본 텍스트 추출";
+  if (!method) return "—";
   return "OCR";
 };
+
+function downloadExtractedText(result) {
+  const url = URL.createObjectURL(
+    new Blob([result.extracted_text], { type: "text/plain;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${result.filename.replace(/\.pdf$/i, "")}-extracted.txt`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function DeveloperPage() {
   const [file, setFile] = useState(null);
   const [fileMetadata, setFileMetadata] = useState(null);
+  const [groundTruthFile, setGroundTruthFile] = useState(null);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const inputRef = useRef(null);
+  const groundTruthInputRef = useRef(null);
   const controllerRef = useRef(null);
 
   async function runTest() {
@@ -43,11 +54,16 @@ export default function DeveloperPage() {
     setStatus("loading");
     setError("");
     try {
-      const data = await uploadDocument(file, { signal: controller.signal });
+      const data = await uploadDocument(file, {
+        signal: controller.signal,
+        groundTruthFile,
+      });
       setResult(data);
       setFileMetadata({ name: file.name, size: file.size });
       setFile(null);
       inputRef.current.value = "";
+      setGroundTruthFile(null);
+      groundTruthInputRef.current.value = "";
       setStatus("success");
     } catch (requestError) {
       if (requestError.name === "AbortError") {
@@ -139,6 +155,33 @@ export default function DeveloperPage() {
             </button>
           </div>
         </div>
+        <div className="ground-truth-control">
+          <input
+            ref={groundTruthInputRef}
+            type="file"
+            accept=".txt,text/plain"
+            onChange={(event) => {
+              setGroundTruthFile(event.target.files?.[0] ?? null);
+              setResult(null);
+            }}
+          />
+          <div>
+            <p>
+              GROUND TRUTH <span>OPTIONAL</span>
+            </p>
+            <strong>
+              {groundTruthFile
+                ? groundTruthFile.name
+                : "정확도 계산용 정답 텍스트(.txt)를 추가하세요"}
+            </strong>
+          </div>
+          <button
+            type="button"
+            onClick={() => groundTruthInputRef.current?.click()}
+          >
+            정답 파일 선택
+          </button>
+        </div>
         {error && (
           <p className="developer-error" role="alert">
             {error}
@@ -155,19 +198,15 @@ export default function DeveloperPage() {
           </div>
           <dl>
             <div>
-              <dt>요약 모델</dt>
+              <dt>분석 모델</dt>
               <dd>{result?.model ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>추출 모델</dt>
-              <dd>{result?.extraction_model ?? "—"}</dd>
             </div>
             <div>
               <dt>추출 방식</dt>
               <dd>{formatExtractionMethod(result?.extraction_method)}</dd>
             </div>
             <div>
-              <dt>추출 시간</dt>
+              <dt>추출 + 요약 시간</dt>
               <dd>{formatDuration(result?.extraction_time_ms)}</dd>
             </div>
           </dl>
@@ -190,16 +229,43 @@ export default function DeveloperPage() {
               <dt>페이지 수</dt>
               <dd>{formatPageCount(result?.page_count)}</dd>
             </div>
-            <div>
-              <dt>표 개수</dt>
-              <dd>{result?.table_count ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>이미지 수</dt>
-              <dd>{result?.image_count ?? "—"}</dd>
-            </div>
           </dl>
         </article>
+      </section>
+      <section className="developer-result">
+        <div className="dev-section-heading">
+          <div>
+            <p>ANALYSIS RESULT</p>
+            <h2>키워드와 요약</h2>
+          </div>
+          <span>{result ? "READY" : "NO DATA"}</span>
+        </div>
+        <div className="result-cards">
+          <article>
+            <p>KEYWORDS</p>
+            <div className="keywords">
+              {result ? (
+                (result.keyword || "키워드 없음")
+                  .split(",")
+                  .map((keyword) => (
+                    <span key={keyword.trim()}>{keyword.trim()}</span>
+                  ))
+              ) : (
+                <span className="developer-result-empty">
+                  분석 후 키워드가 표시됩니다.
+                </span>
+              )}
+            </div>
+          </article>
+          <article className="summary">
+            <p>SUMMARY</p>
+            <p>
+              {result
+                ? result.summary
+                : "분석을 실행하면 문서의 핵심 내용이 이곳에 표시됩니다."}
+            </p>
+          </article>
+        </div>
       </section>
       <section className="raw-output">
         <div className="dev-section-heading">
@@ -218,6 +284,23 @@ export default function DeveloperPage() {
               "테스트 문서를 선택하고 분석을 실행하면 추출 결과가 표시됩니다."}
           </pre>
         </div>
+        <div className="download extraction-download">
+          <div>
+            <p>DOWNLOAD</p>
+            <span>
+              {result
+                ? "추출 원문만 TXT 파일로 저장합니다."
+                : "분석 완료 후 추출 텍스트를 다운로드할 수 있습니다."}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={!result}
+            onClick={() => downloadExtractedText(result)}
+          >
+            ↓&nbsp; TXT 다운로드
+          </button>
+        </div>
       </section>
       <section className="evaluation">
         <div className="dev-section-heading">
@@ -225,35 +308,63 @@ export default function DeveloperPage() {
             <p>QUALITY EVALUATION</p>
             <h2>텍스트 평가표</h2>
           </div>
-          <span>정답 데이터 필요</span>
+          <span>
+            {result?.cer !== undefined && result?.cer !== null
+              ? "정확도 계산 완료"
+              : groundTruthFile
+                ? "정답 텍스트 연결됨"
+                : "정답 데이터 필요"}
+          </span>
         </div>
         <div className="evaluation-table">
           <div className="evaluation-head">
             <span>평가 기준</span>
             <span>확인 항목</span>
-            <span>비중</span>
             <span>평가 방법</span>
             <span>결과</span>
           </div>
-          {criteria.map(([name, question, weight, method]) => (
-            <div className="evaluation-row" key={name}>
-              <strong>{name}</strong>
-              <span>{question}</span>
-              <em>{weight}</em>
-              <span>{method}</span>
-              <b>미측정</b>
-            </div>
-          ))}
+          <div className="evaluation-row">
+            <strong>추출 정확도</strong>
+            <span>정규화한 정답·추출 텍스트의 문자 정확도</span>
+            <span>CER 기반 정확도(높을수록 좋음)</span>
+            <b
+              className={
+                result?.cer === undefined || result?.cer === null
+                  ? "is-unmeasured"
+                  : ""
+              }
+            >
+              {formatAccuracy(result?.cer)}
+            </b>
+          </div>
         </div>
-        <div className="critical-note">
-          <span>!</span>
-          <p>
-            <strong>치명적 오류율</strong>
-            <br />
-            금액·날짜·문서번호 같은 중요 필드는 가중 점수와 별도로 관리합니다.
-          </p>
-          <b>정답 데이터 필요</b>
+        <div className="evaluation-metrics" aria-label="정확도 보조 정보">
+          <div>
+            <span>추출 텍스트 글자 수</span>
+            <strong>
+              {formatCharacterCount(result?.extracted_text_length)}
+            </strong>
+          </div>
+          <div>
+            <span>전처리 후 추출 텍스트</span>
+            <strong>
+              {formatCharacterCount(result?.normalized_extracted_text_length)}
+            </strong>
+          </div>
+          <div>
+            <span>전처리 후 정답 텍스트</span>
+            <strong>
+              {formatCharacterCount(
+                result?.normalized_ground_truth_text_length,
+              )}
+            </strong>
+          </div>
         </div>
+        <p className="evaluation-note">
+          정확도는 (1 − CER) × 100으로 환산하며, CER이 1을 넘으면 0%로
+          표시합니다. CER은 정답과 추출문 모두 |, -, *, # 및 모든 공백을 제거해
+          계산합니다. 음수 부호도 제외되며 TXT에는 추출 원문이 저장됩니다.
+        </p>
       </section>
     </main>
   );
