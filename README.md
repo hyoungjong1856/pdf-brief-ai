@@ -1,5 +1,20 @@
 # Python + FastAPI + Ollama Local API 통합 실습
 
+## 현재 PDF 분석 흐름
+
+`POST /ai/pdf`는 모든 PDF 페이지를 이미지로 변환해 Ollama `/api/chat`에
+한 번 요청하고, `extracted_text`, `keyword`, `summary`를 함께 받습니다.
+페이지별 요청이나 별도 요약 요청은 보내지 않습니다.
+CER은 응답의 추출문으로 계산합니다. 기존 `extraction_time_ms`는 이제 추출과 요약을 합친 처리 시간입니다.
+
+`backend/.env`의 `OLLAMA_ANALYSIS_MODEL`에 이미지 입력을 지원하는 모델을 설정하세요.
+미설정 시 기존 `OLLAMA_SUMMARY_MODEL`, `OLLAMA_OCR_MODEL` 순으로 사용합니다.
+모든 페이지 이미지와 전체 추출문이 한 요청의 모델 용량 안에 들어가야 하므로,
+긴 문서는 메모리·컨텍스트·출력 길이 제한에 영향을 받습니다.
+형식이 잘못되거나 출력 제한으로 잘린 응답은 오류로 반환하며 추가 모델 요청은 하지 않습니다.
+
+아래 내용은 초기 실습 예시입니다.
+
 ## 개요
 
 Client → FastAPI → Ollama Local API → Local Model 구조를 직접 구현한

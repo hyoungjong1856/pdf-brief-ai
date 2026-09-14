@@ -197,19 +197,15 @@ export default function DeveloperPage() {
           </div>
           <dl>
             <div>
-              <dt>요약 모델</dt>
+              <dt>분석 모델</dt>
               <dd>{result?.model ?? "—"}</dd>
-            </div>
-            <div>
-              <dt>추출 모델</dt>
-              <dd>{result?.extraction_model ?? "—"}</dd>
             </div>
             <div>
               <dt>추출 방식</dt>
               <dd>{formatExtractionMethod(result?.extraction_method)}</dd>
             </div>
             <div>
-              <dt>추출 시간</dt>
+              <dt>추출 + 요약 시간</dt>
               <dd>{formatDuration(result?.extraction_time_ms)}</dd>
             </div>
           </dl>
