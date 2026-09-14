@@ -11,5 +11,9 @@ class PDFSummaryResponse(BaseModel):
     page_count: int
     table_count: int
     image_count: int
+    cer: float | None = None
+    extracted_text_length: int
+    normalized_extracted_text_length: int
+    normalized_ground_truth_text_length: int | None = None
     keyword: str
     summary: str

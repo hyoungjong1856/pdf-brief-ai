@@ -7,6 +7,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
+from app.evaluation import calculate_cer, get_text_length_metrics
 from app.ollama_service import (
     OCR_MODEL_NAME,
     SUMMARY_MODEL_NAME,
@@ -33,8 +34,6 @@ app.add_middleware(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    """서버가 실행 중인지 확인하는 간단한 상태 점검 API입니다."""
-
     return {"status": "ok"}
 
 
@@ -88,6 +87,7 @@ def should_use_ocr(
 )
 async def pdf_summary(
     file: UploadFile = File(...),
+    ground_truth: UploadFile | None = File(None),
 ) -> PDFSummaryResponse:
     """PDF를 받고, 텍스트 추출 또는 OCR 후 키워드와 요약을 반환합니다."""
 
@@ -129,11 +129,10 @@ async def pdf_summary(
                 file_bytes,
             )
         except httpx.HTTPError as error:
-            print(f"로컬 GLM-OCR 모델 요청 오류: {error}")
+            print(f"로컬 모델 요청 오류: {error}")
             raise HTTPException(
                 status_code=502,
-                # detail="로컬 GLM-OCR 모델 요청에 실패했습니다.",
-                detail=f"로컬 GLM-OCR 모델 요청에 실패했습니다: {error}",
+                detail=f"로컬 모델 요청에 실패했습니다: {error}",
             ) from error
     else:
         extraction_method = "pypdf"
@@ -151,8 +150,34 @@ async def pdf_summary(
             detail="PDF에서 텍스트를 추출하지 못했습니다.",
         )
 
+    cer = None
+    text_length_metrics = get_text_length_metrics(text)
+    if ground_truth:
+        if not (ground_truth.filename or "").lower().endswith(".txt"):
+            raise HTTPException(
+                status_code=400,
+                detail="정답 텍스트는 .txt 파일만 업로드할 수 있습니다.",
+            )
+
+        ground_truth_bytes = await ground_truth.read()
+        if not ground_truth_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail="정답 텍스트 파일이 비어 있습니다.",
+            )
+
+        try:
+            ground_truth_text = ground_truth_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError as error:
+            raise HTTPException(
+                status_code=400,
+                detail="정답 텍스트 파일은 UTF-8 인코딩이어야 합니다.",
+            ) from error
+
+        cer = calculate_cer(ground_truth_text, text)
+        text_length_metrics = get_text_length_metrics(text, ground_truth_text)
+
     try:
-        # 추출된 텍스트를 Qwen 모델에 보내 키워드와 요약을 생성합니다.
         result = await asyncio.to_thread(
             extract_keywords_and_summary,
             text,
@@ -161,7 +186,6 @@ async def pdf_summary(
         print(f"로컬 요약 모델 요청 오류: {error}")
         raise HTTPException(
             status_code=502,
-            # detail="로컬 요약 모델 요청에 실패했습니다.",
             detail=f"로컬 모델 요청에 실패했습니다: {error}",
         ) from error
 
@@ -175,6 +199,8 @@ async def pdf_summary(
         page_count=page_count,
         table_count=table_count,
         image_count=image_count,
+        cer=cer,
+        **text_length_metrics,
         keyword=result["keyword"],
         summary=result["summary"],
     )
