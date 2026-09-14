@@ -1,38 +1,107 @@
-import base64
 import json
-import os
-from pathlib import Path
 
-import fitz
 import httpx
-from dotenv import load_dotenv
 
-# uvicorn을 어느 디렉터리에서 실행하더라도 backend/.env를 읽습니다.
-# 이미 셸에서 설정한 환경 변수는 override=False로 유지합니다.
-ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(dotenv_path=ENV_FILE, override=False)
+from app.config import (
+    MAX_DOCUMENT_CHARS,
+    OCR_MODEL_NAME,
+    OLLAMA_CHAT_URL,
+    OLLAMA_GENERATE_URL,
+    OLLAMA_TIMEOUT,
+    SUMMARY_MODEL_NAME,
+)
+from app.schemas import PdfAnalysisContent
 
-OLLAMA_BASE_URL = (os.getenv("OLLAMA_BASE_URL") or "http://127.0.0.1:11434").rstrip("/")
-OLLAMA_CHAT_URL = os.getenv("OLLAMA_CHAT_URL") or f"{OLLAMA_BASE_URL}/api/chat"
-OLLAMA_GENERATE_URL = (
-    os.getenv("OLLAMA_GENERATE_URL") or f"{OLLAMA_BASE_URL}/api/generate"
+# ---------------------------------------------------------------------------
+# 프롬프트
+# ---------------------------------------------------------------------------
+
+# 텍스트 기반 / 이미지 기반 양쪽 모두에 적용되는 프롬프트입니다.
+# 추출 경로가 달라도 최종 출력 형식은 동일하게 유지합니다.
+ANALYSIS_SYSTEM_PROMPT = (
+    "당신은 PDF 문서 어시스턴트입니다. 아래의 규칙을 반드시 지키세요.\n"
+    "- 모든 답변은 한국어로 작성하세요.\n"
+    "- 모든 답변은 JSON 형식으로 출력하세요.\n"
+    "- 다른 설명이나 마크다운 코드블록 없이 순수 JSON만 반환하세요.\n"
+    "- 답변은 총 3가지입니다: document, summary, keyword\n"
+    "- document는 문서 본문을 마크다운 형식으로 정리한 내용입니다.\n"
+    "- summary는 문서 전체를 요약한 내용입니다.\n"
+    "- keyword는 핵심어를 쉼표로 구분한 목록입니다.\n"
+    "- 반환 형식: "
+    '{"document": "마크다운 본문", '
+    '"summary": "요약", '
+    '"keyword": "키워드1, 키워드2, 키워드3"}'
 )
 
-OCR_MODEL_NAME = os.getenv("OLLAMA_OCR_MODEL")
-SUMMARY_MODEL_NAME = os.getenv("OLLAMA_SUMMARY_MODEL")
+# 이미지 기반 PDF의 페이지 이미지를 읽을 때 사용하는 프롬프트입니다.
+OCR_SYSTEM_PROMPT = (
+    "당신은 이미지 속 내용을 있는 그대로 정확하게 옮겨 적는 어시스턴트입니다. "
+    "요약하거나 해석하지 말고, 이미지에 보이는 텍스트와 표/차트/그림 등 시각 요소를 "
+    "빠짐없이 최대한 그대로 서술하세요."
+)
+
+OCR_USER_PROMPT = "이 이미지의 내용을 그대로 옮겨 적으세요."
 
 
-# 요약 모델과 실제 통신
+# ---------------------------------------------------------------------------
+# OCR (이미지 기반 PDF)
+# ---------------------------------------------------------------------------
+
+
+def ocr_page_images(page_images: list[str]) -> str:
+    """페이지 이미지(Base64 PNG) 목록을 OCR 모델에 순서대로 보내 텍스트로 만듭니다."""
+
+    text_parts: list[str] = []
+
+    for page_number, image_base64 in enumerate(page_images, start=1):
+        payload = {
+            "model": OCR_MODEL_NAME,
+            "system": OCR_SYSTEM_PROMPT,
+            "prompt": OCR_USER_PROMPT,
+            # Ollama REST API의 images 필드는 Base64 이미지 문자열을 받습니다.
+            "images": [image_base64],
+            "stream": False,
+            "keep_alive": "5m",
+            "options": {
+                "temperature": 0,
+                "num_ctx": 8192,
+            },
+        }
+
+        response = httpx.post(
+            OLLAMA_GENERATE_URL,
+            json=payload,
+            timeout=OLLAMA_TIMEOUT,
+        )
+
+        if response.is_error:
+            print(f"OCR 모델 응답 오류 ({page_number}쪽):", response.status_code)
+            print("응답 본문:", response.text)
+
+        response.raise_for_status()
+
+        page_text = response.json()["response"].strip()
+
+        if page_text:
+            text_parts.append(f"--- 페이지 {page_number} ---\n{page_text}")
+
+    return "\n\n".join(text_parts)
+
+
+# ---------------------------------------------------------------------------
+# 본문 / 요약 / 키워드
+# ---------------------------------------------------------------------------
+
+
 def ask_summary_model(prompt: str) -> str:
+    """요약 모델에 프롬프트를 보내고 원문 응답을 그대로 돌려받습니다."""
+
     payload = {
         "model": SUMMARY_MODEL_NAME,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "당신은 PDF 문서 분석 도우미입니다. "
-                    "반드시 요청한 JSON 형식만 반환하세요."
-                ),
+                "content": ANALYSIS_SYSTEM_PROMPT,
             },
             {
                 "role": "user",
@@ -41,6 +110,8 @@ def ask_summary_model(prompt: str) -> str:
         ],
         "stream": False,
         "keep_alive": "10m",
+        # 프롬프트로만 JSON을 요청하는 것보다 파싱 실패가 훨씬 줄어듭니다.
+        "format": "json",
         "options": {
             "temperature": 0.2,
             "num_ctx": 8192,
@@ -50,32 +121,28 @@ def ask_summary_model(prompt: str) -> str:
     response = httpx.post(
         OLLAMA_CHAT_URL,
         json=payload,
-        timeout=300.0,
+        timeout=OLLAMA_TIMEOUT,
     )
+
+    if response.is_error:
+        print("요약 모델 응답 오류:", response.status_code)
+        print("응답 본문:", response.text)
+
     response.raise_for_status()
 
     return response.json()["message"]["content"].strip()
 
 
-# 텍스트에서 키워드와 요약을 추출하는 함수
-def extract_keywords_and_summary(text: str) -> dict[str, str]:
-    """추출된 전체 텍스트에서 키워드와 요약을 생성합니다."""
+def analyze_document(text: str) -> PdfAnalysisContent:
+    """추출된 텍스트에서 본문(마크다운), 요약, 키워드를 생성합니다."""
 
-    # 초기 버전의 컨텍스트 초과 방지용 제한입니다.
-    # 긴 문서의 전체 요약은 이후 청크 요약 방식으로 개선할 수 있습니다.
-    document = text[:24_000]
+    document = text[:MAX_DOCUMENT_CHARS]
 
-    prompt = (
-        "다음 PDF 문서를 분석해줘.\n"
-        "다른 설명이나 마크다운 코드블록 없이 순수 JSON만 반환해.\n\n"
-        '반환 형식: {"keyword": "키워드1, 키워드2, 키워드3", '
-        '"summary": "한국어 3문장 이내 요약"}\n\n'
-        f"문서 내용:\n{document}"
-    )
+    prompt = f"다음 PDF 문서를 분석해 주세요.\n\n문서 내용:\n{document}"
 
     raw = ask_summary_model(prompt)
 
-    # 모델이 ```json 코드 블록을 붙여도 JSON만 남기도록 처리합니다.
+    # format="json"을 써도 모델이 코드블록을 붙이는 경우가 있어 방어합니다.
     cleaned = raw.strip()
 
     if cleaned.startswith("```"):
@@ -87,83 +154,16 @@ def extract_keywords_and_summary(text: str) -> dict[str, str]:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        # 모델이 JSON 형식을 지키지 않아도 서비스가 중단되지 않게 처리합니다.
-        return {
-            "keyword": "",
-            "summary": raw,
-        }
+        # 모델이 JSON 형식을 지키지 않아도 서비스가 중단되지 않게,
+        # 받은 응답을 본문 자리에 그대로 담아 반환합니다.
+        print("요약 모델 JSON 파싱 실패. 원문을 document에 담아 반환합니다.")
+        return PdfAnalysisContent(document=raw)
 
-    return {
-        "keyword": str(data.get("keyword", "")),
-        "summary": str(data.get("summary", "")),
-    }
+    if not isinstance(data, dict):
+        return PdfAnalysisContent(document=raw)
 
-
-# 스캔 PDF를 이미지로 변환 -> OCR 모델로 텍스트를 추출하는 함수
-def extract_text_with_ocr(file_bytes: bytes) -> str:
-    """스캔 PDF를 페이지 이미지로 변환한 뒤 GLM-OCR로 텍스트를 읽습니다."""
-
-    # PyMuPDF가 메모리의 PDF 바이트를 열고 페이지별 접근을 제공합니다.
-    document = fitz.open(
-        stream=file_bytes,
-        filetype="pdf",
+    return PdfAnalysisContent(
+        document=str(data.get("document", "")),
+        summary=str(data.get("summary", "")),
+        keyword=str(data.get("keyword", "")),
     )
-    text_parts: list[str] = []
-
-    try:
-        for page_number, page in enumerate(document, start=1):
-            # OCR 모델이 인식할 수 있도록 PDF 페이지를 PNG 이미지로 렌더링합니다.
-            pixmap = page.get_pixmap(
-                dpi=200,
-                alpha=False,
-            )
-
-            # Ollama REST API의 images 필드는 Base64 이미지 문자열을 받습니다.
-            image_base64 = base64.b64encode(
-                pixmap.tobytes("png"),
-            ).decode("utf-8")
-
-            payload = {
-                "model": OCR_MODEL_NAME,
-                "prompt": (
-                    "이미지에 있는 모든 텍스트를 원문의 읽기 순서대로 추출하고 Markdown 형식으로 출력하세요.\n"
-                    "HTML 태그, 좌표, data-bbox, data-label 등의 메타데이터는 출력하지 마세요.\n"
-                    "제목은 Markdown 제목(#, ##, ###), 목록은 글머리 기호나 번호 목록, 표는 Markdown 표로 표현하세요.\n"
-                    "문단 구분과 줄바꿈을 유지하고, 다단 문서는 자연스러운 읽기 순서로 정리하세요.\n"
-                    "원문의 언어, 숫자, 기호를 유지하고 번역, 요약, 설명이나 내용을 추가하지 마세요.\n"
-                    "읽을 수 없는 부분은 추측하지 말고 [판독 불가]로 표시하세요.\n"
-                    "이미지나 로고에 포함된 글자는 추출하되 이미지 설명이나 이미지 태그는 넣지 마세요.\n"
-                    "코드 블록으로 감싸지 말고 추출한 Markdown 본문만 출력하세요."
-                ),
-                "images": [image_base64],
-                "stream": False,
-                "keep_alive": "10m",
-                "options": {
-                    "temperature": 0,
-                    "num_ctx": 8192,
-                },
-            }
-
-            response = httpx.post(
-                OLLAMA_GENERATE_URL,
-                json=payload,
-                timeout=300.0,
-            )
-
-            if response.is_error:
-                print("GLM-OCR 상태 코드:", response.status_code)
-                print("GLM-OCR 오류 본문:", response.text)
-
-            response.raise_for_status()
-
-            page_text = response.json()["response"].strip()
-
-            if page_text:
-                text_parts.append(
-                    f"--- 페이지 {page_number} ---\n{page_text}",
-                )
-
-    finally:
-        document.close()
-
-    return "\n\n".join(text_parts)

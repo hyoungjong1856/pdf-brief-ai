@@ -19,6 +19,9 @@ function downloadText(result) {
     "",
     "요약",
     result.summary,
+    "",
+    "본문",
+    result.document || "-",
   ].join("\n");
   const url = URL.createObjectURL(
     new Blob([content], { type: "text/plain;charset=utf-8" }),
