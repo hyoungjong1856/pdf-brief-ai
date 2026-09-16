@@ -1,12 +1,21 @@
 import asyncio
+import hashlib
 import time
 from io import BytesIO
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
+from app.database import (
+    delete_document,
+    delete_summary,
+    find_existing,
+    get_document,
+    list_documents,
+    save_summary,
+)
 from app.evaluation import calculate_cer, get_text_length_metrics
 from app.ollama_service import (
     ANALYSIS_MODEL_NAME,
@@ -74,8 +83,9 @@ def extract_text_from_pdf(
 async def pdf_summary(
     file: UploadFile = File(...),
     ground_truth: UploadFile | None = File(None),
+    force: bool = Form(False),
 ) -> PDFSummaryResponse:
-    """PDF 전체를 한 번의 모델 요청으로 추출·요약하고 평가 결과를 반환합니다."""
+    """기존 요약을 조회하거나 PDF를 분석한 뒤 문서의 요약 이력으로 저장합니다."""
 
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -90,6 +100,13 @@ async def pdf_summary(
             status_code=400,
             detail="비어 있는 PDF 파일입니다.",
         )
+
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    # Evaluation uploads deliberately run again so a new ground truth is evaluated.
+    if not force and ground_truth is None:
+        existing = await asyncio.to_thread(find_existing, file_hash)
+        if existing:
+            return PDFSummaryResponse(**existing)
 
     extraction_started_at = time.perf_counter()
 
@@ -153,7 +170,7 @@ async def pdf_summary(
         cer = calculate_cer(ground_truth_text, text)
         text_length_metrics = get_text_length_metrics(text, ground_truth_text)
 
-    return PDFSummaryResponse(
+    response = PDFSummaryResponse(
         filename=file.filename or "uploaded.pdf",
         model=ANALYSIS_MODEL_NAME,
         extraction_model=ANALYSIS_MODEL_NAME,
@@ -168,3 +185,42 @@ async def pdf_summary(
         keyword=result["keyword"],
         summary=result["summary"],
     )
+
+    saved = await asyncio.to_thread(
+        save_summary,
+        file_hash,
+        response.model_dump(),
+        force or ground_truth is not None,
+    )
+    return PDFSummaryResponse(**saved)
+
+
+@app.get("/documents")
+def documents(
+    q: str = Query("", max_length=300),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    return list_documents(q.strip(), limit, offset)
+
+
+@app.get("/documents/{document_id}")
+def document_detail(document_id: int):
+    document = get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+    return document
+
+
+@app.delete("/documents/{document_id}")
+def remove_document(document_id: int):
+    if not delete_document(document_id):
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+    return {"deleted": True}
+
+
+@app.delete("/documents/{document_id}/summaries/{summary_id}")
+def remove_summary(document_id: int, summary_id: int):
+    if not delete_summary(document_id, summary_id):
+        raise HTTPException(status_code=404, detail="요약을 찾을 수 없습니다.")
+    return {"deleted": True}

@@ -1,5 +1,7 @@
+import "./HomePage.css";
 import { useEffect, useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
+import DocumentLibrary from "../components/DocumentLibrary";
 import { validateFile } from "../utils/validateFile";
 
 function formatFileSize(size) {
@@ -31,6 +33,8 @@ function downloadText(result) {
 }
 
 export default function HomePage() {
+  const [libraryVersion, setLibraryVersion] = useState(0);
+  const [force, setForce] = useState(false);
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("idle");
@@ -51,6 +55,7 @@ export default function HomePage() {
 
   function selectFile(nextFile) {
     setFile(nextFile);
+    setForce(false);
     setResult(null);
     setMessage("");
     setStatus("idle");
@@ -68,8 +73,10 @@ export default function HomePage() {
     setStatus("loading");
     setMessage("");
     try {
-      const data = await uploadDocument(file, { signal: controller.signal });
+      const data = await uploadDocument(file, { signal: controller.signal, force });
       setResult(data);
+      setLibraryVersion((version) => version + 1);
+      setMessage(data.existing ? "기존 데이터가 있습니다. 최근 저장된 요약을 표시합니다." : "요약 결과를 저장했습니다.");
       setFile(null);
       inputRef.current.value = "";
       setStatus("success");
@@ -179,6 +186,10 @@ export default function HomePage() {
             {message}
           </p>
         )}
+        <label className="history-option">
+          <input type="checkbox" checked={force} disabled={status === "loading"} onChange={(event) => setForce(event.target.checked)} />
+          <span className="history-option-copy"><strong>다시 분석하기</strong><small>기존 요약을 유지하고 새 이력을 추가합니다.</small></span>
+        </label>
         <div className="action-row">
           <button
             className="analyze-button"
@@ -257,9 +268,15 @@ export default function HomePage() {
             </button>
           </div>
       </section>
+      <DocumentLibrary version={libraryVersion} onDeleted={(documentId, summaryId) => {
+        if (result?.document_id === documentId && (summaryId === null || result.summary_id === summaryId)) {
+          setResult(null);
+          setStatus("idle");
+          setMessage("");
+        }
+      }} />
       <footer>
-        <span>✦</span> 업로드한 문서는 분석에만 사용되며, 처리 후 저장되지
-        않습니다.
+        <span>✦</span> PDF 원본은 보관하지 않습니다. 추출 텍스트와 요약 결과는 이 서버에 저장됩니다.
       </footer>
     </main>
   );
