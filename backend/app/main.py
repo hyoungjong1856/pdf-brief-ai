@@ -1,13 +1,16 @@
 import asyncio
+import hashlib
 import time
 from io import BytesIO
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
+from app.database import find_existing, save_summary
+from app.document_routes import router as document_router
 from app.evaluation import calculate_cer, get_text_length_metrics
 from app.hybrid_service import ImageOcrError, extract_document, has_text_layer
 from app.image_ocr import IMAGE_OCR_MODEL, IMAGE_OCR_NUM_CTX, IMAGE_OCR_TIMEOUT
@@ -27,6 +30,8 @@ app = FastAPI(
     title="PDF Brief AI API",
     version="1.1.0",
 )
+
+app.include_router(document_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -119,6 +124,7 @@ async def read_ground_truth(ground_truth: UploadFile) -> str:
 async def pdf_summary(
     file: UploadFile = File(...),
     ground_truth: UploadFile | None = File(None),
+    force: bool = Form(False),
     method: Literal["auto", "hybrid", "vlm"] = Query(
         "auto",
         description=(
@@ -144,6 +150,12 @@ async def pdf_summary(
             detail="비어 있는 PDF 파일입니다.",
         )
 
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    if not force and ground_truth is None:
+        existing = await asyncio.to_thread(find_existing, file_hash)
+        if existing:
+            return PDFSummaryResponse(**existing)
+
     started_at = time.perf_counter()
 
     try:
@@ -157,7 +169,11 @@ async def pdf_summary(
     resolved = method
     if method == "auto":
         try:
-            resolved = "hybrid" if await asyncio.to_thread(has_text_layer, file_bytes) else "vlm"
+            resolved = (
+                "hybrid"
+                if await asyncio.to_thread(has_text_layer, file_bytes)
+                else "vlm"
+            )
         except Exception as error:
             raise HTTPException(
                 status_code=400,
@@ -185,7 +201,7 @@ async def pdf_summary(
 
     extraction_time_ms = round((time.perf_counter() - started_at) * 1000, 2)
 
-    return PDFSummaryResponse(
+    stored_response = PDFSummaryResponse(
         filename=file.filename or "uploaded.pdf",
         extraction_time_ms=extraction_time_ms,
         page_count=page_count,
@@ -196,6 +212,14 @@ async def pdf_summary(
         **text_length_metrics,
         **response,
     )
+
+    saved = await asyncio.to_thread(
+        save_summary,
+        file_hash,
+        stored_response.model_dump(),
+        force or ground_truth is not None,
+    )
+    return PDFSummaryResponse(**saved)
 
 
 async def run_hybrid(file_bytes: bytes, page_count: int) -> dict:
