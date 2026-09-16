@@ -2,7 +2,7 @@ import "./HomePage.css";
 import { useEffect, useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
 import DocumentLibrary from "../components/DocumentLibrary";
-import { validateFile } from "../utils/validateFile";
+import { ALLOWED_EXTENSIONS, extensionOf, validateFile } from "../utils/validateFile";
 
 function formatFileSize(size) {
   return size < 1024 * 1024
@@ -10,9 +10,18 @@ function formatFileSize(size) {
     : `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function stripExtension(filename) {
+  return filename.replace(/\.[^./\\]+$/, "");
+}
+
+function fileBadgeLabel(filename) {
+  const extension = extensionOf(filename);
+  return extension ? extension.slice(1).toUpperCase() : "FILE";
+}
+
 function downloadText(result) {
   const content = [
-    "PDF Brief AI 분석 결과",
+    "AI 문서 분석 결과",
     "",
     `원본 파일: ${result.filename}`,
     "",
@@ -27,7 +36,7 @@ function downloadText(result) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${result.filename.replace(/\.pdf$/i, "")}-summary.txt`;
+  link.download = `${stripExtension(result.filename)}-summary.txt`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -109,15 +118,15 @@ export default function HomePage() {
           <br />
           핵심만 명확하게.
         </h1>
-        <p>PDF를 올리면 핵심 키워드와 요약을 빠르게 정리해 드립니다.</p>
+        <p>문서를 올리면 핵심 키워드와 요약을 빠르게 정리해 드립니다.</p>
       </section>
       <section className="upload-section" aria-labelledby="upload-title">
         <div className="section-title">
           <div>
             <p>01 · DOCUMENT</p>
-            <h2 id="upload-title">분석할 PDF를 선택하세요</h2>
+            <h2 id="upload-title">분석할 문서를 선택하세요</h2>
           </div>
-          <span>PDF · 최대 5MB</span>
+          <span>문서 · 최대 5MB</span>
         </div>
         <div
           className={`dropzone ${isDragging ? "is-dragging" : ""} ${status === "loading" ? "is-analyzing" : ""}`}
@@ -138,7 +147,7 @@ export default function HomePage() {
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf"
+            accept={ALLOWED_EXTENSIONS.join(",")}
             disabled={status === "loading"}
             onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
           />
@@ -158,13 +167,13 @@ export default function HomePage() {
                 </button>
                 하거나 여기로 끌어다 놓으세요
               </p>
-              <small>PDF 형식만 지원합니다</small>
+              <small>PDF·이미지·오피스 문서(DOCX/PPTX)·텍스트 등을 지원합니다</small>
             </>
           )}
         </div>
         {file && (
           <div className="file-row">
-            <span className="pdf-badge">PDF</span>
+            <span className="file-badge">{fileBadgeLabel(file.name)}</span>
             <div>
               <strong>{file.name}</strong>
               <small>{formatFileSize(file.size)} · 업로드 준비 완료</small>
@@ -276,7 +285,7 @@ export default function HomePage() {
         }
       }} />
       <footer>
-        <span>✦</span> PDF 원본은 보관하지 않습니다. 추출 텍스트와 요약 결과는 이 서버에 저장됩니다.
+        <span>✦</span> 문서 원본은 보관하지 않습니다. 추출 텍스트와 요약 결과는 이 서버에 저장됩니다.
       </footer>
     </main>
   );

@@ -37,7 +37,7 @@ from app.ollama_service import (
 from app.schemas import PDFSummaryResponse
 
 app = FastAPI(
-    title="PDF Brief AI API",
+    title="Document Brief AI API",
     version="1.1.0",
 )
 
@@ -116,10 +116,10 @@ async def read_ground_truth(ground_truth: UploadFile) -> str:
 
 
 @app.post(
-    "/ai/pdf",
+    "/ai/document",
     response_model=PDFSummaryResponse,
 )
-async def pdf_summary(
+async def document_summary(
     file: UploadFile = File(...),
     ground_truth: UploadFile | None = File(None),
     method: Literal["hybrid", "vlm"] = Query(
@@ -131,7 +131,7 @@ async def pdf_summary(
         ),
     ),
 ) -> PDFSummaryResponse:
-    """PDF를 추출·요약하고 평가 지표를 함께 반환합니다."""
+    """문서를 추출·요약하고 평가 지표를 함께 반환합니다."""
 
     filename = file.filename or "uploaded"
     extension = extension_of(filename)
@@ -269,13 +269,13 @@ async def run_hybrid(file_bytes: bytes, page_count: int) -> dict:
     except Exception as error:
         raise HTTPException(
             status_code=400,
-            detail=f"PDF 추출에 실패했습니다: {error}",
+            detail=f"문서 추출에 실패했습니다: {error}",
         ) from error
 
     if not result.text.strip():
         raise HTTPException(
             status_code=422,
-            detail="PDF에서 텍스트를 추출하지 못했습니다.",
+            detail="문서에서 텍스트를 추출하지 못했습니다.",
         )
 
     summary_started = time.perf_counter()

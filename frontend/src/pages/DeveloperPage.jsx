@@ -1,7 +1,7 @@
 import "./DeveloperPage.css";
 import { useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
-import { validateFile } from "../utils/validateFile";
+import { ALLOWED_EXTENSIONS, validateFile } from "../utils/validateFile";
 
 const formatBytes = (size) =>
   size ? `${(size / 1024 / 1024).toFixed(2)} MB` : "—";
@@ -27,7 +27,7 @@ function downloadExtractedText(result) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${result.filename.replace(/\.pdf$/i, "")}-extracted.txt`;
+  link.download = `${result.filename.replace(/\.[^./\\]+$/, "")}-extracted.txt`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -98,7 +98,7 @@ export default function DeveloperPage() {
           <br />
           테스트 환경
         </h1>
-        <p>PDF 추출 결과, 모델 상태, 품질 평가 지표를 한곳에서 확인합니다.</p>
+        <p>문서 추출 결과, 모델 상태, 품질 평가 지표를 한곳에서 확인합니다.</p>
       </section>
       <section className="test-runner">
         <div className="dev-section-heading">
@@ -120,7 +120,7 @@ export default function DeveloperPage() {
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf"
+            accept={ALLOWED_EXTENSIONS.join(",")}
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
               setFileMetadata(null);
@@ -133,7 +133,7 @@ export default function DeveloperPage() {
             type="button"
             onClick={() => inputRef.current?.click()}
           >
-            {file ? file.name : "테스트 PDF 선택"}
+            {file ? file.name : "테스트 문서 선택"}
             <span>⌄</span>
           </button>
           <div className="test-actions">
@@ -212,9 +212,9 @@ export default function DeveloperPage() {
             </div>
           </dl>
         </article>
-        <article className="dev-card pdf-card">
+        <article className="dev-card document-card">
           <div className="card-topline">
-            <p>PDF DIAGNOSTICS</p>
+            <p>DOCUMENT DIAGNOSTICS</p>
             <span>METADATA</span>
           </div>
           <dl>

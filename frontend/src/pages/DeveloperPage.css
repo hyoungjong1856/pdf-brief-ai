@@ -289,11 +289,11 @@
     monospace;
 }
 
-.pdf-card {
+.document-card {
   background: #f0f2ed;
 }
 
-.pdf-card dl > div {
+.document-card dl > div {
   border-color: #dfe3dc;
 }
 

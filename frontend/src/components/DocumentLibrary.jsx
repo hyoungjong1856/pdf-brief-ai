@@ -1,6 +1,12 @@
 import "./DocumentLibrary.css";
 import { useEffect, useState } from "react";
 import { fetchDocument, fetchDocuments, deleteDocument } from "../api/documentApi";
+import { extensionOf } from "../utils/validateFile";
+
+function fileBadgeLabel(filename) {
+  const extension = extensionOf(filename);
+  return extension ? extension.slice(1).toUpperCase() : "FILE";
+}
 
 export default function DocumentLibrary({ version, onDeleted }) {
   const [revision, setRevision] = useState(0);
@@ -167,7 +173,7 @@ export default function DocumentLibrary({ version, onDeleted }) {
               <p>
                 {search.query
                   ? "다른 파일명이나 짧은 키워드로 검색해 보세요."
-                  : "PDF 분석을 마치면 요약이 이곳에 차곡차곡 저장됩니다."}
+                  : "문서 분석을 마치면 요약이 이곳에 차곡차곡 저장됩니다."}
               </p>
               {search.query && (
                 <button
@@ -201,7 +207,7 @@ export default function DocumentLibrary({ version, onDeleted }) {
                   }}
                 >
                   <span className="library-file-icon" aria-hidden="true">
-                    PDF
+                    {fileBadgeLabel(item.filename)}
                   </span>
                   <span className="library-document-copy">
                     <strong>{item.filename}</strong>
@@ -293,7 +299,7 @@ export default function DocumentLibrary({ version, onDeleted }) {
                   </select>
                   <span aria-hidden="true">⌄</span>
                 </div>
-              </div> : <p className="library-hint">저장된 요약이 없습니다. 같은 PDF를 다시 올리면 새 요약을 저장할 수 있어요.</p>}
+              </div> : <p className="library-hint">저장된 요약이 없습니다. 같은 문서를 다시 올리면 새 요약을 저장할 수 있어요.</p>}
               {summary && (
                 <div className="library-detail-content">
                   <div>
@@ -319,7 +325,7 @@ export default function DocumentLibrary({ version, onDeleted }) {
               </div>
               {deleteError && <p className="message is-error" role="alert">{deleteError}</p>}
               <p className="library-detail-note">
-                <span aria-hidden="true">↻</span> 새 요약이 필요하면 같은 PDF를
+                <span aria-hidden="true">↻</span> 새 요약이 필요하면 같은 문서를
                 올리고 ‘다시 분석하기’를 선택하세요.
               </p>
             </>

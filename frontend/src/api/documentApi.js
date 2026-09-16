@@ -9,7 +9,7 @@ export async function uploadDocument(file, { signal, groundTruthFile, force = fa
     formData.append("ground_truth", groundTruthFile);
   }
 
-  const response = await fetch(`${API_BASE_URL}/ai/pdf`, {
+  const response = await fetch(`${API_BASE_URL}/ai/document`, {
     method: "POST",
     body: formData,
     signal,
