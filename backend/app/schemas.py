@@ -2,6 +2,10 @@ from pydantic import BaseModel
 
 
 class PDFSummaryResponse(BaseModel):
+    document_id: int | None = None
+    summary_id: int | None = None
+    created_at: str | None = None
+    existing: bool = False
     filename: str
     model: str
     extraction_model: str

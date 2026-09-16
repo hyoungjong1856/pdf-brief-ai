@@ -68,3 +68,6 @@ logs/
 *.njsproj
 *.sln
 *.sw?
+
+# Local document library
+backend/data/
