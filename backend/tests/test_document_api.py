@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 from app.main import app
@@ -10,7 +10,16 @@ from app.main import app
 
 class DocumentAPITests(unittest.TestCase):
     def test_upload_reuse_reanalyze_and_search(self):
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"DOCUMENTS_DB_PATH": str(Path(directory) / "documents.db")}), patch("app.main.extract_text_from_pdf", return_value=("본문", 1, 0, 0)), patch("app.main.analyze_pdf", return_value={"extracted_text": "본문", "summary": "매출 증가", "keyword": "매출"}) as analyze:
+        hybrid_result = {
+            "model": "test-model",
+            "extraction_model": "test-model",
+            "extraction_method": "hybrid | test",
+            "extracted_text": "본문",
+            "keyword": "매출",
+            "summary": "매출 증가",
+            "warnings": [],
+        }
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"DOCUMENTS_DB_PATH": str(Path(directory) / "documents.db")}), patch("app.main.read_pdf_diagnostics", return_value=(1, 0, 0)), patch("app.main.run_hybrid", new=AsyncMock(return_value=hybrid_result)) as analyze:
             with TestClient(app) as client:
                 def upload(force=False):
                     return client.post("/ai/pdf", files={"file": ("보고서.pdf", b"pdf-content", "application/pdf")}, data={"force": str(force).lower()})

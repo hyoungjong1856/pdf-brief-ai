@@ -65,6 +65,18 @@ OLLAMA_ANALYSIS_MODEL=qwen2.5vl:7b
 
 `OLLAMA_ANALYSIS_MODEL`은 필수이며 이미지 입력을 지원하는 모델을 지정해야 합니다.
 
+
+PaddlePaddle CPU 버전 설치 & PaddleOCR 설치
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+pip install "paddleocr[all]"
+```
+FastAPI 서버를 종료하고(Ctrl+C) 다시 실행하세요. 첫 실행 시 PP-DocLayoutV2 가중치(약 126MB)를 자동으로 다운로드하므로 수분 정도 시간이 걸릴 수 있습니다. uvicorn app.main:app --reload
+http://127.0.0.1:8000/capabilities 를 열어보세요. layout 필드가 'unavailable (...)'가 아니라 'PP-DocLayoutV2'로 바뀜어 나오면 성공입니다.
+
 ### 프런트엔드
 
 별도 터미널에서 저장소 루트 기준으로 실행합니다.
