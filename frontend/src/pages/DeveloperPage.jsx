@@ -1,3 +1,4 @@
+import "./DeveloperPage.css";
 import { useRef, useState } from "react";
 import { uploadDocument } from "../api/documentApi";
 import { validateFile } from "../utils/validateFile";
