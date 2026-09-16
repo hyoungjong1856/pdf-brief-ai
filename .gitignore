@@ -71,3 +71,6 @@ logs/
 
 # Local document library
 backend/data/
+
+# Local file
+*.private

@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 # 이미지 영역을 잘라 OCR에 보낼 때의 해상도. 너무 낮으면 작은 글자가 뭉개집니다.
 OCR_DPI = int(os.getenv("OCR_DPI") or 200)
-# 페이지에 이만큼도 글자가 없으면 텍스트 레이어가 없는 스캔본으로 간주합니다.
-_TEXT_LAYER_MIN_CHARS = 20
+# 페이지에 텍스트가 전혀 없으면 텍스트 레이어가 없는 스캔본으로 간주합니다.
+# 몇 글자 이상을 "충분한" 텍스트로 볼지는 근거 없는 임의의 기준이 되기 쉬우므로,
+# 공백을 제거하고 한 글자라도 남으면 텍스트 레이어가 있는 것으로 판단합니다.
 # OCR에 보낼 이미지의 긴 변 최대 픽셀 수. 텍스트 레이어가 없는 스캔 페이지는 전체를
 # 이미지 한 장으로 보내는데, 페이지 전체 크기 그대로 보내면 비전 인코더가 만드는
 # 이미지 토큰 수가 지나치게 많아져 컨텍스트를 넘기거나(모델이 400으로 거부) 처리 시간이
@@ -51,19 +52,6 @@ class ExtractionResult:
     warnings: list[str] = field(default_factory=list)
     layout_time_ms: float = 0.0
     ocr_time_ms: float = 0.0
-
-
-def has_text_layer(file_bytes: bytes) -> bool:
-    """PDF에 쓸 만한 텍스트 레이어가 있는지 확인합니다.
-
-    auto 모드에서 하이브리드와 전면 VLM 중 무엇을 쓸지 고르는 기준입니다.
-    """
-
-    with pymupdf.open(stream=file_bytes, filetype="pdf") as document:
-        for page in document:
-            if len((page.get_text("text") or "").strip()) >= _TEXT_LAYER_MIN_CHARS:
-                return True
-    return False
 
 
 def _render_region(page: pymupdf.Page, region: Region) -> bytes:
@@ -150,6 +138,36 @@ def _strip_figure_furniture(parts: list[str], warnings: list[str], page_index: i
     return cleaned
 
 
+def extract_image_document(png_bytes: bytes) -> ExtractionResult:
+    """이미지 파일 한 장을 PDF 변환 없이 바로 OCR합니다.
+
+    PDF 경로의 "텍스트 레이어가 없는 페이지는 전면 OCR" 분기와 결과적으로
+    같은 일을 하지만, 이미지는 원래부터 레이아웃 판단 대상이 아니므로
+    pymupdf로 PDF를 만들고 다시 여는 과정 없이 곧바로 처리합니다.
+    """
+
+    warnings: list[str] = ["이미지 파일은 PDF 변환 없이 전면 OCR로 직접 처리했습니다."]
+
+    started = time.perf_counter()
+    try:
+        text = ocr_image(_cap_image_size(png_bytes), hint="업로드된 이미지")
+    finally:
+        ocr_time_ms = (time.perf_counter() - started) * 1000
+
+    return ExtractionResult(
+        text=text.strip(),
+        page_count=1,
+        image_region_count=1,
+        ocr_region_count=1,
+        orphan_block_count=0,
+        scanned_page_count=1,
+        layout_source="image(direct, 레이아웃 판단 없음)",
+        warnings=warnings,
+        layout_time_ms=0.0,
+        ocr_time_ms=round(ocr_time_ms, 2),
+    )
+
+
 def extract_document(file_bytes: bytes) -> ExtractionResult:
     """PDF 전체를 읽기 순서대로 추출합니다."""
 
@@ -171,7 +189,7 @@ def extract_document(file_bytes: bytes) -> ExtractionResult:
 
             # 텍스트 레이어가 없는 페이지는 영역을 나눌 근거가 없으므로
             # 페이지 전체를 이미지 한 장으로 보고 OCR에 맡깁니다.
-            if len(page_text) < _TEXT_LAYER_MIN_CHARS:
+            if not page_text:
                 scanned_page_count += 1
                 regions = [
                     Region(
@@ -239,4 +257,4 @@ def extract_document(file_bytes: bytes) -> ExtractionResult:
     )
 
 
-__all__ = ["ExtractionResult", "ImageOcrError", "extract_document", "has_text_layer"]
+__all__ = ["ExtractionResult", "ImageOcrError", "extract_document", "extract_image_document"]

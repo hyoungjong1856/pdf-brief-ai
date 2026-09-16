@@ -25,3 +25,11 @@ python-dotenv==1.2.3
 #   python -m pip install "paddleocr[all]"
 numpy>=1.26
 pillow>=10.0
+
+# --- 시스템 의존성 (pip으로 설치되지 않음) ---
+# .docx/.doc/.pptx 업로드를 PDF로 변환하는 데 LibreOffice(soffice 실행 파일)가
+# 필요합니다. pip 패키지가 아니라 OS 패키지 매니저로 설치해야 합니다.
+#   Debian/Ubuntu: apt-get install -y libreoffice
+#   Docker 이미지라면 Dockerfile에 위 설치 단계를 추가하세요.
+# 설치되어 있지 않으면 해당 확장자 업로드 시 500 오류로 안내됩니다 (.pdf/.txt/
+# .md/.png/.jpg/.jpeg 등 다른 형식에는 영향이 없습니다).

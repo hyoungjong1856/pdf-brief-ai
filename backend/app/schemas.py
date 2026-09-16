@@ -10,13 +10,11 @@ class PDFSummaryResponse(BaseModel):
     existing: bool = False
     filename: str
     model: str
-    extraction_model: str
+    extraction_model: str | None = None
     extraction_method: str
     extraction_time_ms: float
     extracted_text: str
     page_count: int
-    table_count: int
-    image_count: int
     cer: float | None = None
     extracted_text_length: int
     normalized_extracted_text_length: int
@@ -25,7 +23,7 @@ class PDFSummaryResponse(BaseModel):
     summary: str
 
     # 하이브리드 경로 진단 정보입니다. vlm 경로에서는 기본값이 그대로 나갑니다.
-    method: str = "vlm"
+    method: str = "hybrid"
     layout_source: str | None = None
     summary_model: str | None = None
     image_ocr_model: str | None = None
