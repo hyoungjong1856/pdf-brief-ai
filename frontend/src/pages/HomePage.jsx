@@ -40,6 +40,7 @@ export default function HomePage() {
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [isExtractedTextOpen, setIsExtractedTextOpen] = useState(false);
   const inputRef = useRef(null);
   const controllerRef = useRef(null);
   const resultSectionRef = useRef(null);
@@ -57,6 +58,7 @@ export default function HomePage() {
     setFile(nextFile);
     setForce(false);
     setResult(null);
+    setIsExtractedTextOpen(false);
     setMessage("");
     setStatus("idle");
   }
@@ -72,6 +74,7 @@ export default function HomePage() {
     controllerRef.current = controller;
     setStatus("loading");
     setMessage("");
+    setIsExtractedTextOpen(false);
     try {
       const data = await uploadDocument(file, {
         signal: controller.signal,
@@ -293,6 +296,38 @@ export default function HomePage() {
             </article>
           </div>
         )}
+        <section
+          className="user-extracted-text"
+          aria-labelledby="extracted-text-title"
+        >
+          <button
+            className="extraction-toggle"
+            type="button"
+            disabled={!result?.extracted_text}
+            aria-expanded={isExtractedTextOpen}
+            aria-controls="user-extracted-text-content"
+            onClick={() => setIsExtractedTextOpen((isOpen) => !isOpen)}
+          >
+            <span>
+              <small>EXTRACTED TEXT</small>
+              <strong id="extracted-text-title">추출 텍스트</strong>
+            </span>
+            <span className="extraction-toggle-action">
+              {isExtractedTextOpen ? "접기" : "원문 보기"}{" "}
+              <i aria-hidden="true">⌄</i>
+            </span>
+          </button>
+          {isExtractedTextOpen && result?.extracted_text && (
+            <div className="user-raw-text" id="user-extracted-text-content">
+              <div className="user-line-numbers" aria-hidden="true">
+                {result.extracted_text.split(/\r\n|\r|\n/).map((_, index) => (
+                  <span key={index}>{index + 1}</span>
+                ))}
+              </div>
+              <pre>{result.extracted_text}</pre>
+            </div>
+          )}
+        </section>
         <div
           className={`download ${result ? "result-reveal result-download" : "is-pending"}`}
         >
@@ -323,6 +358,7 @@ export default function HomePage() {
             (summaryId === null || result.summary_id === summaryId)
           ) {
             setResult(null);
+            setIsExtractedTextOpen(false);
             setStatus("idle");
             setMessage("");
           }
