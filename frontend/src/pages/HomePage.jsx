@@ -49,6 +49,7 @@ export default function HomePage() {
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [isExtractedTextOpen, setIsExtractedTextOpen] = useState(false);
   const inputRef = useRef(null);
   const controllerRef = useRef(null);
   const resultSectionRef = useRef(null);
@@ -66,6 +67,7 @@ export default function HomePage() {
     setFile(nextFile);
     setForce(false);
     setResult(null);
+    setIsExtractedTextOpen(false);
     setMessage("");
     setStatus("idle");
   }
@@ -81,11 +83,19 @@ export default function HomePage() {
     controllerRef.current = controller;
     setStatus("loading");
     setMessage("");
+    setIsExtractedTextOpen(false);
     try {
-      const data = await uploadDocument(file, { signal: controller.signal, force });
+      const data = await uploadDocument(file, {
+        signal: controller.signal,
+        force,
+      });
       setResult(data);
       setLibraryVersion((version) => version + 1);
-      setMessage(data.existing ? "기존 데이터가 있습니다. 최근 저장된 요약을 표시합니다." : "요약 결과를 저장했습니다.");
+      setMessage(
+        data.existing
+          ? "기존 데이터가 있습니다. 최근 저장된 요약을 표시합니다."
+          : "요약 결과를 저장했습니다.",
+      );
       setFile(null);
       inputRef.current.value = "";
       setStatus("success");
@@ -154,7 +164,11 @@ export default function HomePage() {
           {status === "loading" ? (
             <div className="analysis-working" role="status">
               <span>문서를 분석하고 있어요</span>
-              <span className="working-dots" aria-hidden="true"><i /><i /><i /></span>
+              <span className="working-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
             </div>
           ) : (
             <>
@@ -196,8 +210,16 @@ export default function HomePage() {
           </p>
         )}
         <label className="history-option">
-          <input type="checkbox" checked={force} disabled={status === "loading"} onChange={(event) => setForce(event.target.checked)} />
-          <span className="history-option-copy"><strong>다시 분석하기</strong><small>기존 요약을 유지하고 새 이력을 추가합니다.</small></span>
+          <input
+            type="checkbox"
+            checked={force}
+            disabled={status === "loading"}
+            onChange={(event) => setForce(event.target.checked)}
+          />
+          <span className="history-option-copy">
+            <strong>다시 분석하기</strong>
+            <small>기존 요약을 유지하고 새 이력을 추가합니다.</small>
+          </span>
         </label>
         <div className="action-row">
           <button
@@ -225,67 +247,135 @@ export default function HomePage() {
         className={`results ${result ? "has-result" : "is-pending"}`}
         aria-labelledby="result-title"
       >
-          <div className="section-title">
-            <div>
-              <p>02 · RESULT</p>
-              <h2 id="result-title">분석 결과</h2>
-            </div>
-            <span className={`complete ${result ? "" : "is-pending"}`}>
-              <i /> {result ? "분석 완료" : status === "loading" ? "분석 중" : "분석 대기"}
-            </span>
+        <div className="section-title">
+          <div>
+            <p>02 · RESULT</p>
+            <h2 id="result-title">분석 결과</h2>
           </div>
-          {result ? (
-            <div className="result-cards" key={result.filename}>
-              <article className="result-reveal result-keywords">
-                <p>KEYWORDS</p>
-                <div className="keywords">
-                  {(result.keyword || "키워드 없음").split(",").map((keyword) => (
-                    <span key={keyword.trim()}>{keyword.trim()}</span>
-                  ))}
-                </div>
-              </article>
-              <article className="summary result-reveal result-summary">
-                <p>SUMMARY</p>
-                <p>{result.summary}</p>
-              </article>
-            </div>
-          ) : status === "loading" ? (
-            <div className="result-cards skeleton-cards" aria-hidden="true">
-              <article><p>KEYWORDS</p><div className="skeleton-lines short" /></article>
-              <article className="summary"><p>SUMMARY</p><div className="skeleton-lines" /><div className="skeleton-lines medium" /></article>
-            </div>
-          ) : (
-            <div className="result-cards empty-result-cards">
-              <article className="empty-result-card">
-                <p>KEYWORDS</p>
-                <span>분석 후 핵심 키워드가 표시됩니다.</span>
-                <div className="ghost-keywords" aria-hidden="true"><i /><i /><i /></div>
-              </article>
-              <article className="summary empty-result-card">
-                <p>SUMMARY</p>
-                <span>문서의 핵심 내용이 3문장 이내로 정리됩니다.</span>
-              </article>
+          <span className={`complete ${result ? "" : "is-pending"}`}>
+            <i />{" "}
+            {result
+              ? "분석 완료"
+              : status === "loading"
+                ? "분석 중"
+                : "분석 대기"}
+          </span>
+        </div>
+        {result ? (
+          <div className="result-cards" key={result.filename}>
+            <article className="result-reveal result-keywords">
+              <p>KEYWORDS</p>
+              <div className="keywords">
+                {(result.keyword || "키워드 없음").split(",").map((keyword) => (
+                  <span key={keyword.trim()}>{keyword.trim()}</span>
+                ))}
+              </div>
+            </article>
+            <article className="summary result-reveal result-summary">
+              <p>SUMMARY</p>
+              <p>{result.summary}</p>
+            </article>
+          </div>
+        ) : status === "loading" ? (
+          <div className="result-cards skeleton-cards" aria-hidden="true">
+            <article>
+              <p>KEYWORDS</p>
+              <div className="skeleton-lines short" />
+            </article>
+            <article className="summary">
+              <p>SUMMARY</p>
+              <div className="skeleton-lines" />
+              <div className="skeleton-lines medium" />
+            </article>
+          </div>
+        ) : (
+          <div className="result-cards empty-result-cards">
+            <article className="empty-result-card">
+              <p>KEYWORDS</p>
+              <span>분석 후 핵심 키워드가 표시됩니다.</span>
+              <div className="ghost-keywords" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </div>
+            </article>
+            <article className="summary empty-result-card">
+              <p>SUMMARY</p>
+              <span>문서의 핵심 내용이 정리됩니다.</span>
+            </article>
+          </div>
+        )}
+        <section
+          className="user-extracted-text"
+          aria-labelledby="extracted-text-title"
+        >
+          <button
+            className="extraction-toggle"
+            type="button"
+            disabled={!result?.extracted_text}
+            aria-expanded={isExtractedTextOpen}
+            aria-controls="user-extracted-text-content"
+            onClick={() => setIsExtractedTextOpen((isOpen) => !isOpen)}
+          >
+            <span>
+              <small>EXTRACTED TEXT</small>
+              <strong id="extracted-text-title">추출 텍스트</strong>
+            </span>
+            <span className="extraction-toggle-action">
+              {isExtractedTextOpen ? "접기" : "원문 보기"}{" "}
+              <i aria-hidden="true">⌄</i>
+            </span>
+          </button>
+          {isExtractedTextOpen && result?.extracted_text && (
+            <div className="user-raw-text" id="user-extracted-text-content">
+              <div className="user-line-numbers" aria-hidden="true">
+                {result.extracted_text.split(/\r\n|\r|\n/).map((_, index) => (
+                  <span key={index}>{index + 1}</span>
+                ))}
+              </div>
+              <pre>{result.extracted_text}</pre>
             </div>
           )}
-          <div className={`download ${result ? "result-reveal result-download" : "is-pending"}`}>
-            <div>
-              <p>DOWNLOAD</p>
-              <span>{result ? "분석 내용을 파일로 보관하세요." : status === "loading" ? "분석 결과를 생성하고 있습니다." : "분석을 시작하면 결과를 파일로 보관할 수 있습니다."}</span>
-            </div>
-            <button type="button" disabled={!result} onClick={() => downloadText(result)}>
-              ↓&nbsp; TXT 다운로드
-            </button>
+        </section>
+        <div
+          className={`download ${result ? "result-reveal result-download" : "is-pending"}`}
+        >
+          <div>
+            <p>DOWNLOAD</p>
+            <span>
+              {result
+                ? "분석 내용을 파일로 보관하세요."
+                : status === "loading"
+                  ? "분석 결과를 생성하고 있습니다."
+                  : "분석을 시작하면 결과를 파일로 보관할 수 있습니다."}
+            </span>
           </div>
+          <button
+            type="button"
+            disabled={!result}
+            onClick={() => downloadText(result)}
+          >
+            ↓&nbsp; TXT 다운로드
+          </button>
+        </div>
       </section>
-      <DocumentLibrary version={libraryVersion} onDeleted={(documentId, summaryId) => {
-        if (result?.document_id === documentId && (summaryId === null || result.summary_id === summaryId)) {
-          setResult(null);
-          setStatus("idle");
-          setMessage("");
-        }
-      }} />
+      <DocumentLibrary
+        version={libraryVersion}
+        onDeleted={(documentId, summaryId) => {
+          if (
+            result?.document_id === documentId &&
+            (summaryId === null || result.summary_id === summaryId)
+          ) {
+            setResult(null);
+            setIsExtractedTextOpen(false);
+            setStatus("idle");
+            setMessage("");
+          }
+        }}
+      />
       <footer>
-        <span>✦</span> 문서 원본은 보관하지 않습니다. 추출 텍스트와 요약 결과는 이 서버에 저장됩니다.
+        <span>✦</span> PDF 원본은 보관하지 않습니다. 추출 텍스트와 요약 결과는
+        백엔드가 실행되는 컴퓨터에 저장됩니다.
       </footer>
     </main>
   );

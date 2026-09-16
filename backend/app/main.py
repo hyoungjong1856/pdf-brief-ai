@@ -1,13 +1,16 @@
 import asyncio
+import hashlib
 import time
 from io import BytesIO
 from typing import Literal
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
+from app.database import find_existing, save_summary
+from app.document_routes import router as document_router
 from app.evaluation import calculate_cer, get_text_length_metrics
 from app.file_ingest import (
     HWP_EXTENSIONS,
@@ -40,6 +43,8 @@ app = FastAPI(
     title="Document Brief AI API",
     version="1.1.0",
 )
+
+app.include_router(document_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -153,6 +158,12 @@ async def document_summary(
             detail="비어 있는 파일입니다.",
         )
 
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    if not force and ground_truth is None:
+        existing = await asyncio.to_thread(find_existing, file_hash)
+        if existing:
+            return PDFSummaryResponse(**existing)
+
     started_at = time.perf_counter()
 
     if extension in PLAIN_TEXT_EXTENSIONS:
@@ -224,6 +235,14 @@ async def document_summary(
         **text_length_metrics,
         **response,
     )
+
+    saved = await asyncio.to_thread(
+        save_summary,
+        file_hash,
+        stored_response.model_dump(),
+        force or ground_truth is not None,
+    )
+    return PDFSummaryResponse(**saved)
 
 
 async def run_text(text: str) -> dict:
